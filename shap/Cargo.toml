@@ -1,0 +1,8 @@
+[package]
+name = "shap"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+catboost = { path = "../catboost/rust-package", version = "0.1.0"}
+# catboost-sys = { path = "../catboost/catboost/rust-package/catboost-sys", version = "0.1.0"}

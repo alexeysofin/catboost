@@ -47,6 +47,8 @@ CATBOOST_API DataProviderHandle* BuildDataProvider(DataWrapperHandle* dataWrappe
 
 typedef void ModelCalcerHandle;
 
+typedef void DataMetaInfoHandle;
+
 enum EApiPredictionType {
     APT_RAW_FORMULA_VAL = 0,
     APT_EXPONENT = 1,
@@ -669,6 +671,17 @@ CATBOOST_API const char* GetModelInfoValue(ModelCalcerHandle* modelHandle, const
  * @return true on success, false on error
  */
 CATBOOST_API bool GetModelUsedFeaturesNames(ModelCalcerHandle* modelHandle, char*** featureNames, size_t* featureCount);
+
+CATBOOST_API DataMetaInfoHandle *
+CreateDataMetaInfo(ModelCalcerHandle *modelHandle);
+
+CATBOOST_API void DeleteDataMetaInfo(DataMetaInfoHandle *handle);
+
+CATBOOST_API void
+CalcShapSingle(ModelCalcerHandle *modelHandle,
+               DataMetaInfoHandle *metaInfoHandle, const float *floatFeatures,
+               size_t floatFeaturesSize, const char **catFeatures,
+               size_t catFeaturesSize, double *result, size_t *resultSize);
 
 
 #if defined(__cplusplus)

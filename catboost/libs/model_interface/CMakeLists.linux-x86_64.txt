@@ -25,6 +25,7 @@ target_link_libraries(catboostmodel PUBLIC
   catboost-libs-cat_feature
   catboost-libs-data
   catboost-libs-model
+  catboost-libs-fstr
 )
 
 target_link_options(catboostmodel PRIVATE

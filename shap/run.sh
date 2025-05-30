@@ -1,0 +1,1 @@
+LD_LIBRARY_PATH=$(realpath catboost_build/catboost/libs/model_interface/) cargo run

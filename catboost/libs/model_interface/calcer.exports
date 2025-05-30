@@ -61,3 +61,7 @@ C GetCatFeatureIndices
 C GetFloatFeatureIndices
 C GetTextFeatureIndices
 C GetEmbeddingFeatureIndices
+
+C CreateDataMetaInfo
+C DeleteDataMetaInfo
+C CalcShapSingle

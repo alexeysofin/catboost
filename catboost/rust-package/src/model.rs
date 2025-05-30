@@ -8,34 +8,39 @@ use catboost_sys;
 use std::ffi::{CStr,CString};
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
+use std::ptr::null_mut;
 
 pub struct Model {
     handle: *mut catboost_sys::ModelCalcerHandle,
+    data_meta_info_handle: *mut catboost_sys::DataMetaInfoHandle,
 }
 
 unsafe impl Send for Model {}
+unsafe impl Sync for Model {}
 
 impl Model {
     fn new() -> Self {
         let model_handle = unsafe { catboost_sys::ModelCalcerCreate() };
         Model {
             handle: model_handle,
+            data_meta_info_handle: null_mut(),
         }
     }
 
     /// Load a model from a file
     pub fn load<P: AsRef<Path>>(path: P) -> CatBoostResult<Self> {
-        let model = Model::new();
+        let mut model = Model::new();
         let path_c_str = CString::new(path.as_ref().as_os_str().as_bytes()).unwrap();
         CatBoostError::check_return_value(unsafe {
             catboost_sys::LoadFullModelFromFile(model.handle, path_c_str.as_ptr())
         })?;
+        model.data_meta_info_handle = unsafe { catboost_sys::CreateDataMetaInfo(model.handle) };
         Ok(model)
     }
 
     /// Load a model from a buffer
     pub fn load_buffer<P: AsRef<Vec<u8>>>(buffer: P) -> CatBoostResult<Self> {
-        let model = Model::new();
+        let mut model = Model::new();
         CatBoostError::check_return_value(unsafe {
             catboost_sys::LoadFullModelFromBuffer(
                 model.handle,
@@ -43,6 +48,7 @@ impl Model {
                 buffer.as_ref().len(),
             )
         })?;
+        model.data_meta_info_handle = unsafe { catboost_sys::CreateDataMetaInfo(model.handle) };
         Ok(model)
     }
 
@@ -256,6 +262,45 @@ impl Model {
 
     pub fn enable_gpu_evaluation(&self) -> CatBoostResult<()> {
         CatBoostError::check_return_value( unsafe { catboost_sys::EnableGPUEvaluation(self.handle, 0) } )
+    }
+
+    pub fn calc_shap_values_single<
+        TFloatFeatures: AsRef<[f32]>,
+        TString: AsRef<str>,
+        TCatFeatures: AsRef<[TString]>,
+    >(
+        &self,
+        float_features: TFloatFeatures,
+        cat_features: TCatFeatures,
+    ) -> Vec<f64> {
+        let float_features_ptr = float_features.as_ref().as_ptr();
+        let mut cat_features_ptrs = cat_features
+            .as_ref()
+            .iter()
+            .map(|c| c.as_ref().as_ptr() as *const ::std::os::raw::c_char)
+            .collect::<Vec<_>>();
+
+        let cat_features_ptr = cat_features_ptrs.as_mut_ptr();
+        
+        let mut shap_values =
+            vec![0.0; self.get_float_features_count() + self.get_cat_features_count() + 1];
+        let mut shap_len: usize = shap_values.len();
+        let shap_len_mut_ptr: *mut usize = &mut shap_len;
+
+        unsafe {
+            catboost_sys::CalcShapSingle(
+                self.handle,
+                self.data_meta_info_handle,
+                float_features_ptr,
+                float_features.as_ref().len(),
+                cat_features_ptr,
+                cat_features.as_ref().len(),
+                shap_values.as_mut_ptr(),
+                shap_len_mut_ptr,
+            );
+        }
+
+        shap_values
     }
 }
 

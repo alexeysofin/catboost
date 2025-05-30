@@ -7,6 +7,8 @@
 #include <catboost/libs/helpers/polymorphic_type_containers.h>
 #include <catboost/libs/model/model.h>
 
+#include <catboost/libs/fstr/shap_values.h>
+
 #include <util/generic/singleton.h>
 #include <util/generic/xrange.h>
 #include <util/string/cast.h>
@@ -25,8 +27,14 @@ struct TModelHandleContent {
 #define MODEL_HANDLE_CONTENT_PTR(x) ((TModelHandleContent*)(x))
 #define FULL_MODEL_PTR(x) (MODEL_HANDLE_CONTENT_PTR(x)->FullModel)
 #define EVALUATOR_PTR(x) (MODEL_HANDLE_CONTENT_PTR(x)->FullModel->GetCurrentEvaluator())
-
+#define DATA_META_INFO_PTR(x) ((DataMetaInfoHolder *)(x))
 #define DATA_WRAPPER_PTR(x) ((TFeaturesDataWrapper*)(x))
+
+struct DataMetaInfoHolder {
+  THolder<NCB::TDataMetaInfo> DataMetaInfo;
+  TVector<ui32> floatIndices;
+  TVector<ui32> catIndices;
+};
 
 struct TErrorMessageHolder {
     TString Message;
@@ -1033,5 +1041,119 @@ CATBOOST_API bool GetEmbeddingFeatureIndices(ModelCalcerHandle* modelHandle, siz
         count);
 }
 
+TVector<ui32> VecSizeTToUI32(const TVector<size_t> &vec) {
+  if (vec.empty()) {
+    return TVector<ui32>();
+  }
+
+  auto indices = TVector<ui32>(vec.size());
+
+  for (size_t i = 0; i < indices.size(); ++i) {
+    indices[i] = vec[i];
+  }
+
+  return indices;
+}
+
+CATBOOST_API DataMetaInfoHandle *
+CreateDataMetaInfo(ModelCalcerHandle *modelHandle) {
+  auto catIndicesRaw = GetModelCatFeaturesIndices(*FULL_MODEL_PTR(modelHandle));
+  auto catIndices = VecSizeTToUI32(catIndicesRaw);
+
+  auto floatIndicesRaw =
+      GetModelFloatFeaturesIndices(*FULL_MODEL_PTR(modelHandle));
+  auto floatIndices = VecSizeTToUI32(floatIndicesRaw);
+
+  auto textIndicesRaw =
+      GetModelTextFeaturesIndices(*FULL_MODEL_PTR(modelHandle));
+  auto textIndices = VecSizeTToUI32(textIndicesRaw);
+
+  auto embIndicesRaw =
+      GetModelEmbeddingFeaturesIndices(*FULL_MODEL_PTR(modelHandle));
+  auto embIndices = VecSizeTToUI32(embIndicesRaw);
+
+  auto emptyVec = TVector<ui32>{};
+
+  auto *metaInfo = new NCB::TDataMetaInfo{};
+  metaInfo->TargetType = NCB::ERawTargetType::Float;
+  metaInfo->TargetCount = 1;
+
+  metaInfo->FeaturesLayout = MakeIntrusive<NCB::TFeaturesLayout>(
+      (ui32)(floatIndices.size() + catIndices.size()), catIndices, emptyVec,
+      emptyVec, TVector<TString>{});
+
+  auto *holder = new DataMetaInfoHolder{
+      .DataMetaInfo = THolder(metaInfo),
+      floatIndices = floatIndices,
+      catIndices = catIndices,
+  };
+
+  return holder;
+}
+
+CATBOOST_API void DeleteDataMetaInfo(DataMetaInfoHandle *handle) {
+  if (handle != nullptr) {
+    delete DATA_META_INFO_PTR(handle);
+  }
+}
+
+CATBOOST_API void
+CalcShapSingle(ModelCalcerHandle *modelHandle,
+               DataMetaInfoHandle *metaInfoHandle, const float *floatFeatures,
+               size_t floatFeaturesSize, const char **catFeatures,
+               size_t catFeaturesSize, double *result, size_t *resultSize) {
+  size_t docsCount = 1;
+
+  NCB::TDataProviderClosure dataProviderClosure(
+      NCB::EDatasetVisitorType::RawFeaturesOrder,
+      NCB::TDataProviderBuilderOptions(), &NPar::LocalExecutor());
+  auto *visitor =
+      dataProviderClosure.GetVisitor<NCB::IRawFeaturesOrderDataVisitor>();
+  CB_ENSURE(visitor);
+  visitor->Start(*DATA_META_INFO_PTR(metaInfoHandle)->DataMetaInfo, docsCount,
+                 NCB::EObjectsOrder::Undefined, {});
+  {
+    for (size_t i = 0;
+         i < DATA_META_INFO_PTR(metaInfoHandle)->floatIndices.size(); ++i) {
+      auto vals_ = TVector<float>(1);
+      vals_[0] = floatFeatures[i];
+
+      auto vals = MakeIntrusive<NCB::TTypeCastArrayHolder<float, float>>(
+          std::move(vals_));
+      visitor->AddFloatFeature(
+          DATA_META_INFO_PTR(metaInfoHandle)->floatIndices[i], vals);
+    }
+  }
+
+  {
+    for (size_t i = 0;
+         i < DATA_META_INFO_PTR(metaInfoHandle)->catIndices.size(); ++i) {
+      auto vals_ = TVector<TStringBuf>(1);
+      vals_[0] = catFeatures[i];
+
+      visitor->AddCatFeature(DATA_META_INFO_PTR(metaInfoHandle)->catIndices[i],
+                             vals_);
+    }
+  }
+  TVector<float> vec(1);
+  visitor->AddTarget(
+      MakeIntrusive<NCB::TTypeCastArrayHolder<float, float>>(std::move(vec)));
+  visitor->Finish();
+  const auto dataProvider = dataProviderClosure.GetResult();
+
+  auto vals = CalcShapValues(*FULL_MODEL_PTR(modelHandle), *dataProvider,
+                             nullptr, Nothing(), 1, EPreCalcShapValues::Auto,
+                             &NPar::LocalExecutor());
+
+  auto shapVals = vals[0];
+
+  if (shapVals.size() < *resultSize) {
+    *resultSize = shapVals.size();
+  }
+
+  for (size_t i = 0; i < *resultSize; ++i) {
+    result[i] = shapVals[i];
+  }
+}
 
 }
