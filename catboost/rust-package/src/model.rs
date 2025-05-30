@@ -306,6 +306,9 @@ impl Model {
 
 impl Drop for Model {
     fn drop(&mut self) {
+        if !self.data_meta_info_handle.is_null() {
+            unsafe { catboost_sys::DeleteDataMetaInfo(self.data_meta_info_handle) };    
+        }
         unsafe { catboost_sys::ModelCalcerDelete(self.handle) };
     }
 }
