@@ -153,7 +153,7 @@ impl Model {
 
         let mut text_features_ptr = text_features_ptr_storage
             .iter_mut()
-            .map(|object_texts_ptrs: &mut Vec<*const u8>| object_texts_ptrs.as_mut_ptr())
+            .map(|object_texts_ptrs: &mut Vec<*const std::os::raw::c_char>| object_texts_ptrs.as_mut_ptr())
             .collect::<Vec<_>>();
 
         let mut embedding_dimensions = if features.embedding_features.as_ref().len() > 0 {
