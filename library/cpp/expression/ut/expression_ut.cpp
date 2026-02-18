@@ -38,6 +38,7 @@ Y_UNIT_TEST_SUITE(TCalcExpressionTest) {
         UNIT_ASSERT_VALUES_EQUAL(CalcExpression("small * -small", m), -1);
         UNIT_ASSERT_VALUES_EQUAL(CalcExpression("(small + small) * -small", m), -2);
         UNIT_ASSERT_VALUES_EQUAL(CalcExpression("0*-1000", m), 0);
+        UNIT_ASSERT_VALUES_EQUAL(CalcExpression("1||0&&0", m), 0);
 
         UNIT_ASSERT_EQUAL(CalcExpression("-2 + 2", m), 0);
         UNIT_ASSERT_EQUAL(CalcExpression("mv&32768==32768", m), 1);
@@ -400,6 +401,16 @@ Y_UNIT_TEST_SUITE(TCalcExpressionTest) {
         UNIT_ASSERT_EQUAL(calcExpression("A =~ \".*r\""), 1);
         UNIT_ASSERT_EQUAL(calcExpression("A =~ A"), 1);
         UNIT_ASSERT_EQUAL(calcExpression("cyr =~ \"к.р[и]л*ица\""), 1);
+    }
+
+    Y_UNIT_TEST(TestNumberValueAsString) {
+        THashMap<TString, TString> m;
+        m["feature"] = "10";
+        UNIT_ASSERT_EQUAL(CalcExpression("feature + 1", m), 11);
+        UNIT_ASSERT_EQUAL(CalcExpression("feature > 5", m), 1);
+        UNIT_ASSERT_EQUAL(CalcExpression("feature > 20", m), 0);
+        UNIT_ASSERT_EQUAL(CalcExpression("feature != 10", m), 0);
+        UNIT_ASSERT_EQUAL(CalcExpression("feature != \"10\"", m), 0);
     }
 
     Y_UNIT_TEST(TestEmptyExpression) {

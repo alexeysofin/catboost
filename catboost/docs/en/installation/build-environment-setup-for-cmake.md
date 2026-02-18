@@ -28,19 +28,21 @@ For building {{ product }} using Ya Make see [here](../concepts/build-from-sourc
 
 ### [CMake](https://cmake.org/)
 
-  Version 3.24+
+  Version >= 3.24, < 4.0.
+
+  [Issue about support for CMake 4.x](https://github.com/catboost/catboost/issues/3031)
 
   {% cut "Previous requirements" %}
 
   Before commit [21a3f85](https://github.com/catboost/catboost/commit/21a3f856c118b8c2514f0307ca7b013d6329015e):
 
-  |Condition|Minimum version|
+  |Condition|Supported versions|
   |---------|---------|
-  | Target OS is Windows, build without CUDA support | 3.24 |
-  | Target OS is Windows, build with CUDA support | 3.21 |
-  | Target OS is Android | 3.21 |
-  | CUDA support, target OS is not Windows | 3.18 |
-  | None of the above | 3.15 |
+  | Target OS is Windows, build without CUDA support | >= 3.24, < 4.0 |
+  | Target OS is Windows, build with CUDA support | >= 3.21, < 4.0 |
+  | Target OS is Android | >= 3.21, < 4.0 |
+  | CUDA support, target OS is not Windows | >= 3.18, < 4.0 |
+  | None of the above | >= 3.15, < 4.0 |
 
   {% endcut %}
 
@@ -63,7 +65,7 @@ For building {{ product }} using Ya Make see [here](../concepts/build-from-sourc
 
       - [`lld` linker](https://lld.llvm.org/), version 7+
 
-      For Linux target the default CMake toolchain assumes that `clang` and `clang++` are available from the command line and will use them to compile {{ product }} components. If the default version of `clang` and `clang++` is not what is intended to be used for building then modify the toolchain file `$CATBOOST_SRC_ROOT/build/toolchains/clang.toolchain` - replace all occurences of `clang` and `clang++` with `clang-$CLANG_VERSION` and `clang++-$CLANG_VERSION` respectively where `$CLANG_VERSION` is the version of `clang` you want to use like, for example, `16` or `17` (must be already installed).
+      For Linux target the default CMake toolchain assumes that `clang`, `clang++` and `ld.lld` are available from the command line and will use them to compile and link {{ product }} components. If the default versions of `clang`, `clang++`, `ld.lld` are not what is intended to be used for building then modify the toolchain file `$CATBOOST_SRC_ROOT/build/toolchains/clang.toolchain` - replace all occurences of `clang`, `clang++` and `ld.lld` with `clang-$LLVM_VERSION`, `clang++-$LLVM_VERSION` and `ld.lld-$LLVM_VERSION` respectively where `$LLVM_VERSION` is the version of `clang` or `lld` you want to use like, for example, `16` or `17` (must be already installed).
 
       For compilation with CUDA support the default CMake toolchain assumes that `clang-14` is available from the command line.
 
@@ -103,9 +105,11 @@ For building {{ product }} using Ya Make see [here](../concepts/build-from-sourc
         - Microsoft Visual Studio 2022 with `clang-cl` compiler with version 14+ installed (can be selected in `Individual components` pane of the Visual Studio Installer for Visual Studio 2022). See details [here](https://learn.microsoft.com/en-us/cpp/build/clang-support-msbuild?view=msvc-170)
 
       - for builds with CUDA support:
-        - Microsoft Visual Studio 2019 or 2022 with MSVC v142 -  C++ x64/x86 build tools version v14.28 - 16.x or v14.29 - 16.x (can be selected in `Individual components` pane of the Visual Studio Installer for a particular Visual Studio version)
+        - Microsoft Visual Studio 2019 or 2022 with MSVC v142 -  C++ x64/x86 build tools version v14.28 - 16.x, v14.29 - 16.x or 14.4x (can be selected in `Individual components` pane of the Visual Studio Installer for a particular Visual Studio version)
 
       {% cut "Previous requirements" %}
+
+      For revisions before [b6b6b3f](https://github.com/catboost/catboost/commit/b6b6b3f2747c0c903beb5679ac5d674fc8653cd0) builds with CUDA required MSVC v142 - Visual Studio 2019 C++ x64/x86 build tools version v14.28 - 16.x or v14.29 - 16.x.
 
       For revisions before [8698718](https://github.com/catboost/catboost/commit/86987189bd2d016ea1241a98d78319c0e900b99c) builds without CUDA required Microsoft Visual Studio 2022 with `clang-cl` compiler with versions 14 - 18.
 
