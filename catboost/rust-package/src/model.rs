@@ -46,6 +46,49 @@ impl Model {
         Ok(model)
     }
 
+    pub fn set_prediction_type(
+        &mut self,
+        prediction_type: catboost_sys::EApiPredictionType,
+    ) -> CatBoostResult<()> {
+        CatBoostError::check_return_value(unsafe {
+            catboost_sys::SetPredictionType(self.handle, prediction_type)
+        })
+    }
+
+
+    pub fn get_model_used_features_names(&self) -> CatBoostResult<Vec<String>> {
+        let mut names_raw: *mut *mut std::os::raw::c_char = std::ptr::null_mut();
+        let mut size: usize = 0;
+        let size_ptr: *mut usize = &mut size;
+
+        CatBoostError::check_return_value(unsafe {
+            catboost_sys::GetModelUsedFeaturesNames(self.handle, &mut names_raw, size_ptr)
+        })?;
+
+        let mut names: Vec<String> = Vec::with_capacity(size);
+
+        let first_char_ptr = names_raw;
+        for i in 0..size {
+            let char_ptr = unsafe { first_char_ptr.add(i) };
+            if char_ptr.is_null() {
+                return Err(CatBoostError {
+                    description: "feature name pointer is null".to_owned(),
+                });
+            }
+
+            let name = unsafe { CStr::from_ptr(*char_ptr).to_string_lossy().to_string() };
+            names.push(name);
+
+            // free individual string
+            unsafe { libc::free(*char_ptr as *mut std::os::raw::c_void) };
+        }
+
+        // free array itself
+        unsafe { libc::free(names_raw as *mut std::os::raw::c_void) }
+
+        Ok(names)
+    }
+
     fn set_or_check_object_count<
         TFeature,
         TObjectFeatures: AsRef<[TFeature]>,
