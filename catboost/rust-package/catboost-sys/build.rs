@@ -11,31 +11,38 @@ fn main() {
         .canonicalize()
         .unwrap();
 
-    let mut build_native_args = vec![
-        "../../../build/build_native.py",
-        "--targets",
-        "catboostmodel",
-        "--build-root-dir",
-        out_dir.to_str().unwrap(),
-    ];
-    if debug == "true" {
-        build_native_args.push("--build-type=Debug");
-    } else {
-        build_native_args.push("--build-type=Release");
-    }
+    let skip_build_lib = match env::var("CATBOOST_SKIP_BUILD_LIB") {
+        Ok(val) => val == "true" || val == "1",
+        _ => false,
+    };
 
-    #[cfg(feature = "gpu")]
-    build_native_args.push("--have-cuda");
+    if !skip_build_lib {
+        let mut build_native_args = vec![
+            "../../../build/build_native.py",
+            "--targets",
+            "catboostmodel",
+            "--build-root-dir",
+            out_dir.to_str().unwrap(),
+        ];
+        if debug == "true" {
+            build_native_args.push("--build-type=Debug");
+        } else {
+            build_native_args.push("--build-type=Release");
+        }
 
-    let build_cmd_status = Command::new("python")
-        .args(&build_native_args)
-        .status()
-        .unwrap_or_else(|e| {
-            panic!("Failed to run build_native.py : {}", e);
-        });
+        #[cfg(feature = "gpu")]
+        build_native_args.push("--have-cuda");
 
-    if !build_cmd_status.success() {
-        panic!("Building with build_native.py failed");
+        let build_cmd_status = Command::new("python")
+            .args(&build_native_args)
+            .status()
+            .unwrap_or_else(|e| {
+                panic!("Failed to run build_native.py : {}", e);
+            });
+
+        if !build_cmd_status.success() {
+            panic!("Building with build_native.py failed");
+        }
     }
 
     let bindings = bindgen::Builder::default()
