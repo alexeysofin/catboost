@@ -58,9 +58,8 @@ try:
 
     import catboost_python_package_ut_lib as python_package_ut_lib
 except ImportError:
-    sys.path.append(os.path.join(os.environ['CMAKE_SOURCE_DIR'], 'catboost', 'pytest'))
     import lib
-    sys.path.insert(0, os.path.join(os.environ['CMAKE_SOURCE_DIR'], 'catboost', 'python-package'))
+    sys.path.insert(0, os.path.join(lib.git_repo_root_dir, 'catboost', 'python-package'))
     import ut.lib as python_package_ut_lib
 
 
@@ -1373,10 +1372,16 @@ def test_save_load_equality(task_type):
         cb_blob.load_model(blob=open(output_model_path, 'rb').read())
         check_equality(model, cb_blob)
 
+    def check_load_from_memoryview(model):
+        cb_blob = CatBoost()
+        cb_blob.load_model(blob=memoryview(open(output_model_path, 'rb').read()))
+        check_equality(model, cb_blob)
+
     def fill_check_model(params, train_file, test_file, cd_file):
         model, _ = fit_from_file(params, train_file, test_file, cd_file)
         model.save_model(fname=output_model_path)
         check_load_from_string(model)
+        check_load_from_memoryview(model)
         check_load_from_stream(model)
 
     fill_check_model({'iterations': 10, 'task_type': task_type, 'gpu_ram_part': TEST_GPU_RAM_PART, 'devices': '0'}, TRAIN_FILE, TEST_FILE, CD_FILE)
@@ -3158,6 +3163,50 @@ def test_multilabel_custom_objective(task_type, n=10):
 
     for p1, p2 in zip(pred1, pred2):
         assert (abs(p1 - p2) < EPS).all()
+
+
+def test_default_loss_function_column_vector_label_no_crash():
+    rng = np.random.RandomState(0)
+    X = rng.rand(30, 5)
+    y = (rng.rand(30) > 0.5).astype(np.int32).reshape(-1, 1)
+
+    model = CatBoostClassifier(iterations=2, depth=2, random_seed=0, verbose=False)
+    model.fit(X, y)
+
+    assert model.get_all_params()["loss_function"] == "Logloss"
+
+
+def test_default_loss_function_multilabel_binary_int_targets():
+    rng = np.random.RandomState(1)
+    X = rng.rand(30, 5)
+    y = (rng.rand(30, 3) > 0.5).astype(np.int32)
+
+    model = CatBoostClassifier(iterations=2, depth=2, random_seed=0, verbose=False)
+    model.fit(X, y)
+
+    assert model.get_all_params()["loss_function"] == "MultiLogloss"
+
+
+def test_default_loss_function_multilabel_binary_float_targets():
+    rng = np.random.RandomState(2)
+    X = rng.rand(30, 5)
+    y = (rng.rand(30, 3) > 0.5).astype(np.float32)
+
+    model = CatBoostClassifier(iterations=2, depth=2, random_seed=0, verbose=False)
+    model.fit(X, y)
+
+    assert model.get_all_params()["loss_function"] == "MultiLogloss"
+
+
+def test_default_loss_function_multilabel_soft_targets():
+    rng = np.random.RandomState(3)
+    X = rng.rand(30, 5)
+    y = rng.rand(30, 3).astype(np.float32)
+
+    model = CatBoostClassifier(iterations=2, depth=2, random_seed=0, verbose=False)
+    model.fit(X, y)
+
+    assert model.get_all_params()["loss_function"] == "MultiCrossEntropy"
 
 
 def test_pool_after_fit(task_type):
@@ -5736,7 +5785,13 @@ def test_feature_names_from_model():
             pool = pools[i]
             model = CatBoost(dict(iterations=10))
             assert model.feature_names_ is None
+            assert not hasattr(model, 'feature_names_in_')
+            with pytest.raises(AttributeError):
+                model.feature_names_in_
             model.fit(pool)
+            assert isinstance(model.feature_names_in_, np.ndarray)
+            assert model.feature_names_in_.dtype == object
+            assert list(model.feature_names_in_) == model.feature_names_
             output.write(str(model.feature_names_) + '\n')
 
     return local_canonical_file(output_file)
@@ -5758,11 +5813,13 @@ def test_feature_names_from_loaded_model(format):
     model = CatBoostRegressor(iterations=10)
     model.fit(pool)
     assert model.feature_names_ == feature_names
+    assert list(model.feature_names_in_) == feature_names
 
     model_file = test_output_path('model')
     model.save_model(model_file, format=format, pool=pool)
     loaded_model = CatBoostRegressor().load_model(model_file, format=format)
     assert loaded_model.feature_names_ == feature_names
+    assert list(loaded_model.feature_names_in_) == feature_names
 
 
 Value_AcceptableAsEmpty = [
@@ -7582,6 +7639,7 @@ def test_set_feature_names():
     names = ["feature_{}".format(x) for x in range(train_pool.num_col())]
     model.set_feature_names(names)
     assert names == model.feature_names_
+    assert names == list(model.feature_names_in_)
 
 
 def test_bad_set_feature_names():
@@ -10932,6 +10990,30 @@ def test_select_features_by_multi_feature_tags(task_type, train_final_model, alg
         json.dump(summary, f, indent=4, sort_keys=True)
 
     return local_canonical_file(summary_file_name, diff_tool=get_limited_precision_json_diff_tool(1.e-6))
+
+
+def test_select_features_with_hyphenated_feature_names():
+    features, labels = generate_random_labeled_dataset(
+        n_samples=500,
+        n_features=4,
+        labels=[0, 1],
+        seed=42
+    )
+    feature_names = ['non-TB', 'feat-b', 'plain', 'other-feat']
+    learn = Pool(features, labels, feature_names=feature_names)
+    test = Pool(features, labels, feature_names=feature_names)
+    model = CatBoostClassifier(iterations=10, logging_level='Silent')
+    summary = model.select_features(
+        learn,
+        eval_set=test,
+        steps=1,
+        train_final_model=False,
+        features_for_select=['non-TB', 'feat-b'],
+        num_features_to_select=1
+    )
+    assert len(summary['selected_features']) == 1
+    assert len(summary['eliminated_features']) == 1
+    assert set(summary['selected_features_names'] + summary['eliminated_features_names']) == {'non-TB', 'feat-b'}
 
 
 def test_embedding_features_data_list_with_data_with_features_order():
